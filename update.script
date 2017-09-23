@@ -17,7 +17,8 @@
 ##################################################################
 # Date & Update script version
 INSTALLDIR=/usr/local/updatescript
-MIRROR=https://www.wael.name/script
+#MIRROR-OLD=https://www.wael.name/script
+MIRROR=https://github.com/waelisa/update-script-for-DirectAdmin/raw/master
 MIRRORDA=http://files.directadmin.com/services/custombuild
 PHPIZE1=/usr/local/bin/phpize
 PHPIZE2=/usr/local/php5/bin/phpize
