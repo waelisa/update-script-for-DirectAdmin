@@ -147,6 +147,5 @@ save then run
 *****
 *****
 
-Thanks for smtalk, SeLLeRoNe and ReN from DirectAdmin forum
 Best Regards,
 Wael Isa
