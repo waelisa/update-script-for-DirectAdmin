@@ -1,0 +1,34 @@
+##################################################################
+#
+# GNU GENERAL PUBLIC LICENSE
+# Version 2, June 1991
+# Copyright (C) 2006,2007 Free Software Foundation, Inc.
+# 51 Franklin St, Fifth Floor, Boston, MA  02110-1301  USA
+# Everyone is permitted to copy and distribute verbatim copies
+# of this license document, but changing it is not allowed.
+#
+# Update script made by Wael Isa
+# H188, R4008, Arad 240, Kingdom of Bahrain
+# https://www.wael.name
+# Version: 1.X
+# Release Date: 1 / 9 / 2006
+#
+##################################################################
+# Version
+PERL=/usr/bin/perl
+#OPENSSL-core:1.0.2l:f85123cd390e864dfbe517e7616e6566
+OPENSSL=1.0.2l
+#OPENSSH-core:7.5p1:652fdc7d8392f112bef11cacf7e69e23
+OPENSSH=7.5p1
+SPAMASSASSIN=3.4.1
+#CLAMAV-core:0.99.2:61b51a04619aeafd965892a53f86d192
+CLAMAV=0.99.2
+MRTG=2.17.4
+WEBMIN=1.850
+NOBODYCHECK=1.5.0
+IMAGEMAGICK=Current-Release
+GRAPHICSMAGICK=1.3.25
+#update.script-core:1.8.4:001245a5d80fba62efe8153c90086083
+SRDATE=1/9/2006
+SUDATE=18/8/2017
+USVersion=1.8.4
