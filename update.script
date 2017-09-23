@@ -1,0 +1,773 @@
+#!/bin/sh
+##################################################################
+#
+# GNU GENERAL PUBLIC LICENSE
+# Version 2, June 1991
+# Copyright (C) 2006,2007 Free Software Foundation, Inc.
+# 51 Franklin St, Fifth Floor, Boston, MA  02110-1301  USA
+# Everyone is permitted to copy and distribute verbatim copies
+# of this license document, but changing it is not allowed.
+#
+# Update script made by Wael Isa
+# H188, R4008, Arad 240, Kingdom of Bahrain
+# https://www.wael.name/
+# Version: 1.8.4
+# Release Date: 1 / 9 / 2006
+#
+##################################################################
+# Date & Update script version
+INSTALLDIR=/usr/local/updatescript
+MIRROR=https://www.wael.name/script
+MIRRORDA=http://files.directadmin.com/services/custombuild
+PHPIZE1=/usr/local/bin/phpize
+PHPIZE2=/usr/local/php5/bin/phpize
+
+# Load mirror
+MIRRORCONF=$INSTALLDIR/mirror.conf
+if [ -f "$MIRRORCONF" ] && [ ! "$MIRRORCONF" == "" ]; then
+      source $MIRRORCONF
+else
+      wget --no-check-certificate -O $INSTALLDIR/mirror.conf $MIRROR/mirror.tmp
+      echo "\mirror.conf downloaded."
+fi
+chmod 700 mirror.conf
+$INSTALLDIR/mirror.conf
+
+# Load versions
+MIRRORVER=$INSTALLDIR/versions
+if [ -f "$MIRRORVER" ] && [ ! "$MIRRORVER" == "" ]; then
+      source $MIRRORVER
+else
+      wget --no-check-certificate -O $INSTALLDIR/versions $MIRROR/versions.tmp
+      echo "\versions file downloaded."
+fi
+chmod 700 versions
+$INSTALLDIR/versions
+
+BASE_PATH=$INSTALLDIR
+
+if [ "`md5sum $INSTALLDIR/update.script | cut -d ' ' -f 1`" = "`grep update.script-core -m1 $INSTALLDIR/versions | cut -d ':' -f 3`" ]; then
+	echo ""
+else
+	echo "update.script core invalid. Aborting,"
+	echo "Download update.script again."
+	exit
+fi
+
+## Make sure the script is being executed as root
+rootcheck() {
+   if [ "${UID}" != "0" ]; then
+      echo "This program must be run as root.  Exiting."
+      exit 0
+   fi
+}
+## Binary locations
+WGET=/usr/bin/wget
+REPLACE=/usr/bin/replace
+GREP=/bin/grep
+if [ -e /etc/debian_version ]; then
+   CUT=/usr/bin/cut
+else
+   CUT=/bin/cut
+fi
+TAR=/bin/tar
+CAT=/bin/cat
+MD5SUM=/usr/bin/md5sum
+TAIL=/usr/bin/tail
+if [ -e /etc/debian_version ]; then
+   AWK=/usr/bin/awk
+else
+   AWK=/bin/awk
+fi
+HEAD=/usr/bin/head
+MKE2FS=/sbin/mke2fs
+RPM=/bin/rpm
+DPKG=/usr/bin/dpkg
+RM=/bin/rm
+MKDIR=/bin/mkdir
+
+## Not so mandatory (but recommended atleast have one) binary location
+YUM=/usr/bin/yum
+UP2DATE=/usr/bin/up2date
+APTGET=/usr/bin/apt-get
+
+## Architecture, Number of CPUs, and RAM
+if [ -e /etc/debian_version ]; then
+   UNAMED=`uname -m`
+   if [ "${UNAMED}" = "i686" ]; then
+      ARCH=i386
+   else
+      ARCH=x86_64
+   fi
+else
+   ARCH=`uname -i`
+fi
+
+CPUTOTAL=`$GREP processor /proc/cpuinfo | wc -l | $AWK '{ print $1 }'`
+MEMTOTAL=`expr \`$GREP MemTotal /proc/meminfo | $AWK '{ print $2 }'\` / 1024`
+
+## Get info for current and latest versions of software
+latestversionfunc() {
+   export $1=`$GREP -m1 $2 $INSTALLDIR/versions | $CUT -d ':' -f 2`
+}
+latestmd5func() {
+   export $1=`$GREP -m1 $2 $INSTALLDIR/versions | $CUT -d ':' -f 3`
+}
+
+supporteddistros(){
+## Make sure this is a supported distribution
+   if [ -e /etc/redhat-release ]; then
+      if [ "`${CAT} /etc/redhat-release | ${AWK} '{ print $1, $2, $3, $7 }'`" = "Red Hat Enterprise 3" ]; then
+         DISTRO=RHEL3
+      elif [ "`${CAT} /etc/redhat-release | ${AWK} '{ print $1, $2, $3, $7 }'`" = "Red Hat Enterprise 4" ]; then
+         DISTRO=RHEL4
+      elif [ "`${CAT} /etc/redhat-release | ${AWK} '{ print $1, $2, $3, $7 }'`" = "Red Hat Enterprise 5" ]; then
+         DISTRO=RHEL5
+      elif [ "`${CAT} /etc/redhat-release | ${AWK} '{ print $1, $2, $3, $7 }'`" = "Red Hat Enterprise 6" ]; then
+         DISTRO=RHEL6
+      elif [ "`${CAT} /etc/redhat-release | ${AWK} '{ print $1, $3 }' | ${CUT} -d '.' -f1`" = "CentOS 3" ]; then
+         DISTRO=CENTOS3
+      elif [ "`${CAT} /etc/redhat-release | ${AWK} '{ print $1, $3 }' | ${CUT} -d '.' -f1`" = "CentOS 4" ]; then
+         DISTRO=CENTOS4
+      elif [ "`${CAT} /etc/redhat-release | ${AWK} '{ print $1, $3 }' | ${CUT} -d '.' -f1`" = "CentOS 5" ]; then
+         DISTRO=CENTOS5
+      elif [ "`${CAT} /etc/redhat-release | ${AWK} '{ print $1, $3 }' | ${CUT} -d '.' -f1`" = "CentOS 6" ]; then
+         DISTRO=CENTOS6
+      elif [ "`${CAT} /etc/redhat-release | ${AWK} '{ print $1, $3 }' | ${CUT} -d '.' -f1`" = "CentOS 7" ]; then
+         DISTRO=CENTOS7
+      elif [ "`${CAT} /etc/redhat-release | ${AWK} '{ print $1, $2 }'`" = "Fedora Core" ]; then
+         DISTRO=FC`${CAT} /etc/redhat-release | ${AWK} '{ print $4 }'`
+      elif [ "`${CAT} /etc/redhat-release | ${AWK} '{ print $1, $2 }'`" = "Fedora release" ]; then
+         DISTRO=FC`${CAT} /etc/redhat-release | ${AWK} '{ print $3 }'`
+      fi
+   elif [ ! -e /etc/redhat-release ]; then
+echo
+echo
+echo "##################################################################"
+echo "#"
+echo -e "# \e[1;37mUpdate.Script did not support your OS, Sorry\e[0m"
+echo "#"
+echo "##################################################################"
+echo
+echo
+      exit
+   fi
+}
+
+dodistrocheck(){
+   if [ -e /etc/redhat-release ]; then
+      if [ "`${CAT} /etc/redhat-release | ${AWK} '{ print $1, $2, $3, $7 }'`" = "Red Hat Enterprise 3" ]; then
+         echo "Your OS is: RedHat Enterprise Linux 3"
+      elif [ "`${CAT} /etc/redhat-release | ${AWK} '{ print $1, $2, $3, $7 }'`" = "Red Hat Enterprise 4" ]; then
+         echo "Your OS is: RedHat Enterprise Linux 4"
+      elif [ "`${CAT} /etc/redhat-release | ${AWK} '{ print $1, $2, $3, $7 }'`" = "Red Hat Enterprise 5" ]; then
+         echo "Your OS is: RedHat Enterprise Linux 5"
+      elif [ "`${CAT} /etc/redhat-release | ${AWK} '{ print $1, $2, $3, $7 }'`" = "Red Hat Enterprise 6" ]; then
+         echo "Your OS is: RedHat Enterprise Linux 6"
+      elif [ "`${CAT} /etc/redhat-release | ${AWK} '{ print $1, $3 }' | ${CUT} -d '.' -f1`" = "CentOS 3" ]; then
+         echo "Your OS is: CentOS 3"
+      elif [ "`${CAT} /etc/redhat-release | ${AWK} '{ print $1, $3 }' | ${CUT} -d '.' -f1`" = "CentOS 4" ]; then
+         echo "Your OS is: CentOS 4"
+      elif [ "`${CAT} /etc/redhat-release | ${AWK} '{ print $1, $3 }' | ${CUT} -d '.' -f1`" = "CentOS 5" ]; then
+         echo "Your OS is: CentOS 5"
+      elif [ "`${CAT} /etc/redhat-release | ${AWK} '{ print $1, $3 }' | ${CUT} -d '.' -f1`" = "CentOS 6" ]; then
+         echo "Your OS is: CentOS 6"
+      elif [ "`${CAT} /etc/redhat-release | ${AWK} '{ print $1, $3 }' | ${CUT} -d '.' -f1`" = "CentOS 7" ]; then
+         echo "Your OS is: CentOS 7"
+      elif [ "`${CAT} /etc/redhat-release | ${AWK} '{ print $1, $2 }'`" = "Fedora Core" ]; then
+         echo "Your OS is: Fedora Core `${CAT} /etc/redhat-release | ${AWK} '{ print $4 }'`"
+      elif [ "`${CAT} /etc/redhat-release | ${AWK} '{ print $1, $2 }'`" = "Fedora release" ]; then
+         echo "Your OS is: Fedora Core `${CAT} /etc/redhat-release | ${AWK} '{ print $3 }'`"
+      fi
+   fi
+}
+
+## Always perform rootcheck, supported distros and version file download before anything else
+rootcheck
+supporteddistros
+##################################################
+
+showHelp()
+{
+echo
+echo "##################################################################"
+echo "#"
+echo -e "# \e[1;37mGNU GENERAL PUBLIC LICENSE\e[0m"
+echo -e "# \e[1;37mVersion 2, June 1991\e[0m"
+echo -e "# \e[1;37mCopyright (C) 2006,2007 Free Software Foundation, Inc.\e[0m"
+echo -e "# \e[1;37m51 Franklin St, Fifth Floor, Boston, MA  02110-1301  USA\e[0m"
+echo -e "# \e[1;37mEveryone is permitted to copy and distribute verbatim copies\e[0m"
+echo -e "# \e[1;37mof this license document, but changing it is not allowed.\e[0m"
+echo "#"
+echo -e "# \e[1;37mUpdate script made by Wael Isa\e[0m"
+echo -e "# \e[1;37mH188, R4008, Arad 240, Kingdom of Bahrain\e[0m"
+echo -e "# \e[1;37mhttps://www.wael.name\e[0m"
+echo -e "# \e[1;37mVersion: $USVersion\e[0m"
+echo -e "# \e[1;37mRelease Date: $SRDATE\e[0m"
+echo -e "# \e[1;37mUpdate Date : $SUDATE\e[0m"
+echo "#"
+echo "##################################################################"
+read E
+echo
+echo -e " \e[1;37mInstall/Update to :-\e[0m"
+echo
+echo -e "  To update \e[1;4;37mupdate.script\e[0m run:";
+echo "     $0 UPDATEME";
+echo -e "  To see release date and version.";
+echo "     $0 DATE";
+echo
+echo -e "  To update \e[1;4;37mOpenssl $OPENSSL\e[0m run:";
+echo "     $0 OPENSSL";
+echo -e "  To update \e[1;4;37mOpenssh $OPENSSH\e[0m run:";
+echo "     $0 OPENSSH";
+echo -e "  To update \e[1;4;37mSpam Assassin $SPAMASSASSIN\e[0m run:";
+echo "     $0 SPAMASSASSIN";
+echo -e "  To update \e[1;4;37mClam Anti-Virus $CLAMAV\e[0m run:";
+echo "     $0 CLAMAV";
+echo -e "  To update \e[1;4;37mImageMagick $IMAGEMAGICK\e[0m run:";
+echo "     $0 IMAGEMAGICK";
+echo -e "  To update \e[1;4;37mGraphicsMagick $GRAPHICSMAGICK\e[0m run:";
+echo "     $0 GRAPHICSMAGICK";
+echo -e "  To update \e[1;4;37mWebmin control panel $WEBMIN\e[0m run:";
+echo "     $0 WEBMIN";
+echo -e "  To update \e[1;4;37mMRTG $MRTG\e[0m run:";
+echo "     $0 MRTG";
+echo
+echo -e "  To Clean this folder and update \e[1;4;37mupdate.script\e[0m run:";
+echo "     $0 CLEAN";
+echo
+echo "";
+}
+
+doSUPHPCHOWN()
+{
+            chown webapps:webapps /var/www/html -R
+            echo ""; echo ""; echo "chown folder /var/www/html DONE" ; exit
+
+}
+
+doUPDATEME()
+{
+            mv $INSTALLDIR/mirror.conf /mirror.conf ; cd $INSTALLDIR
+            wget --no-check-certificate -O $INSTALLDIR/licenses $MIRROR/licenses.tmp
+            wget --no-check-certificate -O $INSTALLDIR/versions $MIRROR/versions.tmp
+            wget --no-check-certificate -O $INSTALLDIR/update.script $MIRROR/update.script
+            chmod 755 $INSTALLDIR/update.script ; echo ; echo ; cd $INSTALLDIR
+            mv /mirror.conf $INSTALLDIR/mirror.conf
+            echo ""; echo ""; echo "Run this to see release date and version ./update.script DATE" ; exit
+
+}
+
+doCLEAN()
+{
+         mv $INSTALLDIR/mirror.conf /mirror.conf ; cd $INSTALLDIR
+         rm -fr $INSTALLDIR/*.* ; rm -fr $INSTALLDIR/*
+         wget --no-check-certificate -O $INSTALLDIR/licenses $MIRROR/licenses.tmp
+         wget --no-check-certificate -O $INSTALLDIR/versions $MIRROR/versions.tmp
+         wget --no-check-certificate -O $INSTALLDIR/update.script $MIRROR/update.script
+         chmod 755 $INSTALLDIR/update.script ; echo ; echo ; cd $INSTALLDIR
+         mv /mirror.conf $INSTALLDIR/mirror.conf
+         echo ""; echo ""; echo "Run this to see release date and version ./update.script DATE" ; exit
+
+}
+
+doDATE()
+{
+                                                echo ""; echo ""; echo ""
+                                                echo "##################################################################"
+                                                echo "#"
+                                                echo -e "# \e[1;37mGNU GENERAL PUBLIC LICENSE\e[0m"
+                                                echo -e "# \e[1;37mVersion 2, June 1991\e[0m"
+                                                echo -e "# \e[1;37mCopyright (C) 2006,2007 Free Software Foundation, Inc.\e[0m"
+                                                echo -e "# \e[1;37m51 Franklin St, Fifth Floor, Boston, MA  02110-1301  USA\e[0m"
+                                                echo -e "# \e[1;37mEveryone is permitted to copy and distribute verbatim copies\e[0m"
+                                                echo -e "# \e[1;37mof this license document, but changing it is not allowed.\e[0m"
+                                                echo "#"
+                                                echo -e "# \e[1;37mUpdate script made by Wael Isa\e[0m"
+                                                echo -e "# \e[1;37mH188, R4008, Arad 240, Kingdom of Bahrain\e[0m"
+                                                echo -e "# \e[1;37mhttps://www.wael.name/\e[0m"
+                                                echo -e "# \e[1;37mVersion: $USVersion\e[0m"
+                                                echo -e "# \e[1;37mRelease Date: $SRDATE\e[0m"
+                                                echo -e "# \e[1;37mUpdate Date : $SUDATE\e[0m"
+                                                echo "#"
+                                                echo "##################################################################"
+                                                echo ""; echo ""; echo ""; exit
+
+}
+
+doOPENSSL()
+{
+           #supporteddistros ; cd $INSTALLDIR
+           rm -rf openssl-*.tar.gz ; wget --no-check-certificate http://www.openssl.org/source/openssl-$OPENSSL.tar.gz
+           if [ "`md5sum $INSTALLDIR/openssl-$OPENSSL.tar.gz | cut -d ' ' -f 1`" = "`grep OPENSSL-core -m1 $INSTALLDIR/versions | cut -d ':' -f 3`" ]; then
+	echo "MD5 valid."
+           else
+	echo "MD5 invalid. Aborting."
+	exit
+           fi
+           tar xvzf openssl-$OPENSSL.tar.gz
+           cd openssl-$OPENSSL/ ; rm -rf /usr/lib/libssl.so.0 ; rm -rf  /usr/lib/libssl.so ; rm  -rf /lib/libssl.so.2 ; rm  -rf /usr/lib/libcrypto.so.0
+           ./config --prefix=/usr no-threads shared ; make ; make test ; make install ; echo "/usr/local/ssl/lib" >> /etc/ld.so.conf ; /sbin/ldconfig -v
+           #rm -f /lib/libssl.so.4 ; rm -f /usr/lib/libcrypto.so.0 ; ln -s /usr/lib/libssl.so.0.9.8 /lib/libssl.so.4 ; ln -s /usr/lib/libcrypto.so.0.9.8 /usr/lib/libcrypto.so.0
+           #rm -f /lib/libssl.so.4 ; rm -f /usr/lib/libcrypto.so.0 ; ln -s /usr/lib/libssl.so.1.0.0 /lib/libssl.so.4 ; ln -s /usr/lib/libcrypto.so.1.0.0 /usr/lib/libcrypto.so.0
+           #rm -f /lib/libssl.so.4 ; rm -f /usr/lib/libcrypto.so.0 ; ln -s /usr/lib/libssl.so.1.0.1 /lib/libssl.so.4 ; ln -s /usr/lib/libcrypto.so.1.0.1 /usr/lib/libcrypto.so.0
+           rm -f /lib/libssl.so.4 ; rm -f /usr/lib/libcrypto.so.0 ; ln -s /usr/lib/libssl.so.1.0.2 /lib/libssl.so.4 ; ln -s /usr/lib/libcrypto.so.1.0.2 /usr/lib/libcrypto.so.0
+           echo ; echo ; echo "Update to Openssl $OPENSSL done"
+
+}
+
+doOPENSSH()
+{
+           #supporteddistros ; cd $INSTALLDIR
+           rm -rf openssh-*.tar.gz ; wget --no-check-certificate http://ftp.openbsd.org/pub/OpenBSD/OpenSSH/portable/openssh-$OPENSSH.tar.gz
+           if [ "`md5sum $INSTALLDIR/openssh-$OPENSSH.tar.gz | cut -d ' ' -f 1`" = "`grep OPENSSH-core -m1 $INSTALLDIR/versions | cut -d ':' -f 3`" ]; then
+	echo "MD5 valid."
+           else
+	echo "MD5 invalid. Aborting."
+	exit
+           fi
+           tar -zxvf openssh-$OPENSSH.tar.gz
+           #cd openssh-$OPENSSH ; ./configure --bindir=/usr/bin --sbindir=/usr/sbin --sysconfdir=/etc/ssh --with-md5-passwords
+           cd openssh-$OPENSSH ; ./configure --bindir=/usr/bin --sbindir=/usr/sbin --sysconfdir=/etc/ssh --with-md5-passwords --without-openssl-header-check
+           make ; make install ; perl -pi -e "s/^GSSAPICleanupCredentials/#GSSAPICleanupCredentials/g" /etc/ssh/sshd_config
+           perl -pi -e "s/^UsePAM/#UsePAM/g" /etc/ssh/sshd_config ; perl -pi -e "s/^GSSAPIAuthentication/#GSSAPIAuthentication/g" /etc/ssh/sshd_config
+           /sbin/service sshd restart ; echo ; echo ; cd $INSTALLDIR ; echo "Update to Openssh $OPENSSH done" ; exit
+
+}
+
+doWEBMIN()
+{
+                                                cd $INSTALLDIR ; rm -rf webmin-$WEBMIN.tar.gz webmin-$WEBMIN
+                                                                                echo "Try #1";
+                                                                                                echo "";
+                                                                                                wget --no-check-certificate http://$HTTP1.sourceforge.net/sourceforge/webadmin/webmin-$WEBMIN.tar.gz
+                                                                                                if [ ! -e webmin-$WEBMIN.tar.gz ]
+                                                                                                then
+                                                                                                        echo "Try #2\n";
+                                                                                                        echo "";
+                                                                                                        wget --no-check-certificate http://$HTTP2.sourceforge.net/sourceforge/webadmin/webmin-$WEBMIN.tar.gz
+                                                                                                        if [ ! -e webmin-$WEBMIN.tar.gz ]
+                                                                                                        then
+                                                                                                                echo "Try #3\n";
+                                                                                                                echo "";
+                                                                                                                wget --no-check-certificate http://$HTTP3.sourceforge.net/sourceforge/webadmin/webmin-$WEBMIN.tar.gz
+                                                                                                                if [ ! -e webmin-$WEBMIN.tar.gz ]
+                                                                                                                then
+
+                                                                                                                                echo "Try #4\n";
+                                                                                                        echo "";
+                                                                                                        wget --no-check-certificate http://$HTTP4.sourceforge.net/sourceforge/webadmin/webmin-$WEBMIN.tar.gz
+                                                                                                        if [ ! -e webmin-$WEBMIN.tar.gz ]
+                                                                                                        then
+
+                                                                                                                        echo "Catastrophe! All Mirrors failed.";
+                                                                                                                        exit 1;
+                                                                                                                         fi
+                                                                                                                fi
+                                                                                                        fi
+                                                                                                fi
+                                                                                                tar -zxf webmin-$WEBMIN.tar.gz ; cd webmin-$WEBMIN ; ./setup.sh /usr/local/webmin ; cd $INSTALLDIR ; echo ; echo ; echo "Control panel Webmin install/update done" ; exit
+
+}
+
+doSPAMASSASSIN()
+{
+                yum -y install perl-Archive-Tar perl-IO-Zlib perl-Package-Constants ; cd /root ; perl -MCPAN -e 'install Archive::Tar' ; perl -MCPAN -e 'install IO::Zlib' ; perl -MCPAN -e 'install Digest::SHA' ; perl -MCPAN -e 'install Mail::SPF' ; perl -MCPAN -e 'install Mail::DKIM' ; cd /usr/local/directadmin/scripts/packages ; rm -fr Mail-SpamAssassin-*.tar.gz
+                wget --no-check-certificate http://mirror.olnevhost.net/pub/apache/spamassassin/source/Mail-SpamAssassin-$SPAMASSASSIN.tar.gz ; cd /usr/local/directadmin/scripts
+                killall spamd exim -9 
+	VERSION=$SPAMASSASSIN
+
+	PERL=/usr/bin/perl
+
+	NAME=Mail-SpamAssassin-${VERSION}
+	FILE=${NAME}.tar.gz
+	WEBPATH=http://files.directadmin.com/services/9.0
+	WEBPATH_BACKUP=http://files4.directadmin.com/services/9.0
+	CWD=/usr/local/directadmin/scripts/packages
+
+	MAKEMAKER_VER=6.31
+	MAKEMAKER_NAME=ExtUtils-MakeMaker-${MAKEMAKER_VER}
+	DIGEST_VER=1.15
+	DIGEST_SHA1_VER=2.11
+	PARSER_VER=3.56
+	NETDNS_VER=0.60
+	NETDNS_NAME=Net-DNS-${NETDNS_VER}
+	NETIP_VER=1.25
+	NETIP_NAME=Net-IP-${NETIP_VER}
+	NETADDRIP_VER=4.027
+	NETADDRIP_NAME=NetAddr-IP-${NETADDRIP_VER}
+
+	ERROR_VER=0.17015
+	ERROR_NAME=Error-${ERROR_VER}
+
+	URI_VER=1.35
+	URI_NAME=URI-${URI_VER}
+
+	NET_CIDR_LITE_VER=0.20
+	NET_CIDR_LITE_NAME=Net-CIDR-Lite-${NET_CIDR_LITE_VER}
+
+	DIGEST_NAME=Digest-${DIGEST_VER}
+	DIGEST_SHA1_NAME=Digest-SHA1-${DIGEST_SHA1_VER}
+	PARSER_NAME=HTML-Parser-${PARSER_VER}
+
+	STORABLE_VER=2.16
+	STORABLE_NAME=Storable-${STORABLE_VER}
+
+	DB_FILE_VER=1.815
+	DB_FILE_NAME=DB_File-${DB_FILE_VER}
+
+	#MAIL_SPF_QUERY_VER=1.998
+	#MAIL_SPF_QUERY_NAME=Mail-SPF-Query-${MAIL_SPF_QUERY_VER}
+	MAIL_SPF_VER=2.004
+	MAIL_SPF_NAME=Mail-SPF-${MAIL_SPF_VER}
+
+	SYS_HOSTNAME_VER=1.4
+	SYS_HOSTNAME_NAME=Sys-Hostname-Long-${SYS_HOSTNAME_VER}
+
+	NET_SSLeay_VER=1.30
+	NET_SSLeay_NAME=Net_SSLeay.pm-${NET_SSLeay_VER}
+
+	IO_SOCKET_VER=1.06
+	IO_SOCKET_NAME=IO-Socket-SSL-${IO_SOCKET_VER}
+
+	OS=`uname`
+
+	getFile() {
+ 	      if [ ! -e $1 ]
+ 	       then
+                echo -e "Downloading\t\t$1...";
+                if [ $OS = "FreeBSD" ]; then
+                        fetch -o ${CWD}/${1} ${WEBPATH}/${1};
+                else
+                        wget --no-check-certificate -O ${CWD}/${1} ${WEBPATH}/${1};
+                fi
+                if [ ! -e $1 ]
+                then
+                        echo "Fileserver is down, using the backup file server..";
+                        if [ $OS = "FreeBSD" ]; then
+                                fetch ${WEBPATH_BACKUP}/${1};
+                        else
+                                wget --no-check-certificate ${WEBPATH_BACKUP}/${1} -O ${CWD}/${1};
+                        fi
+                fi
+
+    	    else
+                echo -e "File already exists:\t${1}";
+  	      fi
+	}
+
+	ensureVersion() {
+
+	PERL_VER=`$PERL -v | head -n2 | tail -n1 | cut -d\  -f4 | cut -dv -f2`
+	NUM1=`echo $PERL_VER | cut -d. -f1`
+	NUM2=`echo $PERL_VER | cut -d. -f2`
+	NUM3=`echo $PERL_VER | cut -d. -f3`
+	
+	if [ $NUM1 -gt 5 ]; then
+		return 1;
+	fi
+	if [ $NUM2 -gt 6 ]; then
+		return 1;
+	fi
+	if [ $NUM3 -gt 0 ]; then
+		return 1;
+	fi
+
+	echo "Your perl version is $PERL_VER. You require at least perl 5.6.1 for $NAME";
+	exit 1;
+	}
+
+	downloadMake() {
+	cd $CWD
+
+	getFile ${1}.tar.gz
+	tar xvzf ${1}.tar.gz
+	cd ${1}
+	$PERL Makefile.PL
+	make
+	make install
+
+	cd $CWD
+	}
+
+	cd $CWD;
+
+
+	ensureVersion;
+
+	export LANG=C
+
+	downloadMake $ERROR_NAME
+	#downloadMake $MAKEMAKER_NAME
+	downloadMake $DIGEST_NAME
+	downloadMake $DIGEST_SHA1_NAME
+	downloadMake $PARSER_NAME
+	downloadMake $STORABLE_NAME
+	downloadMake $NETDNS_NAME
+	downloadMake $NETIP_NAME
+	downloadMake $NET_CIDR_LITE_NAME
+	downloadMake $NETADDRIP_NAME
+	downloadMake $DB_FILE_NAME
+	#downloadMake $MAIL_SPF_QUERY_NAME
+	downloadMake $MAIL_SPF_NAME
+	downloadMake $SYS_HOSTNAME_NAME
+	downloadMake $NET_SSLeay_NAME
+	downloadMake $IO_SOCKET_NAME
+	downloadMake $URI_NAME
+
+	getFile $FILE;
+
+	tar xzf ${FILE}
+	chown -R root $NAME
+
+	cd ${CWD}/${NAME}
+
+	#export LANG=C #moved higher
+	$PERL Makefile.PL PREFIX=/usr CONTACT_ADDRESS="the administrator of that system" RUN_NET_TESTS="no"
+	make
+	make install
+
+
+	## we need to change how it's started.
+	if [ -e /etc/init.d/exim ]; then
+	$PERL -pi -e 's#/usr/bin/spamd -d -a -c -m 5#/usr/bin/spamd -d -c -m 5#' /etc/init.d/exim
+	fi
+	if [ -e /usr/local/etc/rc.d/exim ]; then
+	$PERL -pi -e 's#/usr/bin/spamd -d -a -c -m 5#/usr/bin/spamd -d -c -m 5#' /usr/local/etc/rc.d/exim
+	fi
+
+	echo "";
+	sa-update ; /usr/bin/spamd -d -c -m 5 ; /sbin/service exim restart ; echo ; echo ; cd $INSTALLDIR ; echo "SpamAssassin update done" ; exit
+
+}
+
+doCLAMAV()
+{
+                                                cd $INSTALLDIR ; rm -fr clamav-*.tar.gz ; rm -fr clamav-* ; killall clamd -9 ; killall freshclam -9
+                                                                                                                                echo "Try #1";
+                                                                                                echo "";
+                                                                                                wget --no-check-certificate http://www.clamav.net/downloads/production/clamav-$CLAMAV.tar.gz
+                                                                                                if [ ! -e clamav-$CLAMAV.tar.gz ]
+                                                                                                then
+                                                                                                        echo "Try #2\n";
+                                                                                                        echo "";
+                                                                                                        wget --no-check-certificate http://$HTTP2.sourceforge.net/sourceforge/clamav/clamav-$CLAMAV.tar.gz
+                                                                                                        if [ ! -e clamav-$CLAMAV.tar.gz ]
+                                                                                                        then
+                                                                                                                echo "Try #3\n";
+                                                                                                                echo "";
+                                                                                                                wget --no-check-certificate http://$HTTP3.sourceforge.net/sourceforge/clamav/clamav-$CLAMAV.tar.gz
+                                                                                                                if [ ! -e clamav-$CLAMAV.tar.gz ]
+                                                                                                                then
+
+                                                                                                                                echo "Try #4\n";
+                                                                                                        echo "";
+                                                                                                        wget --no-check-certificate http://$HTTP4.sourceforge.net/sourceforge/clamav/clamav-$CLAMAV.tar.gz
+                                                                                                        if [ ! -e clamav-$CLAMAV.tar.gz ]
+                                                                                                        then
+
+                                                                                                                        echo "Catastrophe! All Mirrors failed.";
+                                                                                                                        exit 1;
+                                                                                                                         fi
+                                                                                                                fi
+                                                                                                        fi
+                                                                                                fi
+                                                          if [ "`md5sum $INSTALLDIR/clamav-$CLAMAV.tar.gz | cut -d ' ' -f 1`" = "`grep CLAMAV-core -m1 $INSTALLDIR/versions | cut -d ':' -f 3`" ]; then
+                                               	echo "MD5 valid."
+                                                          else
+                                               	echo "MD5 invalid. Aborting."
+                                               	exit
+                                                          fi
+                                                                                                tar -zxf clamav-$CLAMAV.tar.gz ; cd clamav-$CLAMAV
+                                                yum -y install gmp-devel bzip2* ; yum -y remove clamav
+                                                #rm -fr /usr/local/bin/clamscan /usr/local/bin/freshclam
+                                                groupadd clamav
+                                                useradd -g clamav -s /bin/false -c "Clam AntiVirus" clamav
+                                                mkdir /var/lib/clamav ; chmod 777 /var/lib/clamav ; chown clamav:clamav /var/lib/clamav ; ./configure --sysconfdir=/etc --enable-bzip2 && make && make uninstall && make install ; rm -fr  /etc/freshclam.conf ; rm -fr  /etc/clamd.conf
+                                                #wget --no-check-certificate $MIRROR/clamd/web4host.net-clamav.i386.rpm
+                                                #rpm -Uvh --force --nodeps ./web4host.net-clamav.i386.rpm
+                                                cd /etc/init.d/ ; wget --no-check-certificate $MIRROR/clamd/clamd1 ; wget --no-check-certificate $MIRROR/clamd/freshclam1 ; rm -fr clamd freshclam ; mv clamd1 clamd ; mv freshclam1 freshclam ; chmod 755 clamd freshclam ; rm -fr /sbin/clamd /sbin/freshclam ; ln -s /etc/init.d/clamd /usr/local/bin/clamd ; ln -s /etc/init.d/freshclam /usr/local/bin/freshclam ; cd /etc/ ; rm -fr  freshclam.conf clamd.conf ; wget --no-check-certificate $MIRROR/clamd/clamd2 ; wget --no-check-certificate $MIRROR/clamd/freshclam2 ; mv clamd2 clamd.conf ; mv freshclam2 freshclam.conf ; ldconfig ; /usr/local/sbin/clamd ; /usr/local/bin/freshclam ; killall clamd -9 ; killall freshclam -9 ; /usr/local/bin/freshclam  -d -c 6 ; /usr/local/sbin/clamd
+                                                COUNT=`grep -c -e '^/usr/local/sbin/clamd' /etc/rc.local`
+                                                        if [ $COUNT -eq 0 ]; then
+                                                                echo "/usr/local/sbin/clamd" >> /etc/rc.local
+                                                                        fi
+                                                COUNT=`grep -c -e '^/usr/local/bin/freshclam' /etc/rc.local`
+                                                        if [ $COUNT -eq 0 ]; then
+                                                                echo "/usr/local/bin/freshclam -d -c 6" >> /etc/rc.local
+                                                                        fi
+                                                ldconfig ; echo "ClamAV auto start when server reboot" ; killall clamd -9 ; killall freshclam -9 ; /usr/local/bin/freshclam  -d -c 6 ; /usr/local/sbin/clamd ; cd $INSTALLDIR ; echo ; echo ; echo "ClamAV install/update done" ; exit
+
+}
+
+doMRTG()
+{
+                                                #cd $INSTALLDIR ; rm -rf /usr/local/mrtg-2/ ; rm -rf /var/www/html/mrtg/ ; rm -rf mrtg-$MRTG.tar.gz ; yum -y  install gd-devel ; USER=`whoami`
+                                                cd $INSTALLDIR ; rm -rf /usr/local/mrtg-2/ ; rm -rf mrtg-$MRTG.tar.gz ; yum -y  install gd-devel ; USER=`whoami`
+                                                echo "Checking for previous MRTG installation..."
+                                                if [ -d /var/www/html/mrtg ]; then
+                                                        FILECOUNT=`ls /var/www/html/mrtg | wc -l`
+                                                        if [ "$FILECOUNT" -ge "1" ]; then
+                                                                echo "There appears to be files in /var/www/html/mrtg already! Exiting..."
+                                                                exit 0;
+                                                        else
+                                                                echo "The directory /var/www/html/mrtg exists, but there are no files. This is okay..."
+                                                        fi
+                                                else
+                                                        echo "The directory /var/www/html/mrtg does not exist. I will create it..."
+                                                        mkdir /var/www/html/mrtg
+                                                fi
+                                                WD=`pwd`
+                                                cd /usr/local/src
+                                                rm -rf mrtg*
+                                                echo "Preparations complete..."
+                                                cd $INSTALLDIR ; rm -fr mrtg*.tar.gz mrtg*
+                                                echo "Downloading the most recent MRTG and installing it..."
+                                                #wget --no-check-certificate http://people.ee.ethz.ch/~oetiker/webtools/mrtg/pub/mrtg-$MRTG.tar.gz
+                                                wget --no-check-certificate http://oss.oetiker.ch/mrtg/pub/mrtg-$MRTG.tar.gz
+                                                tar zfx mrtg-$MRTG.tar.gz
+                                                cd mrtg*
+                                                ./configure --with-gd=/usr/lib ; make ; make install
+                                                echo "MRTG has been installed..."
+                                                cd $INSTALLDIR ; rm -fr core.tgz core
+                                                wget --no-check-certificate -O core.tgz $MIRROR/core.tgz ; tar zfx core.tgz ; mv core /var/www/html/mrtg/core
+                                                echo "Creating necessary directories and preparing for installation..."
+                                                #mkdir /var/www/html/mrtg/core
+                                                chmod 700 /var/www/html/mrtg/core
+                                                #wget --no-check-certificate -O mrtg.cfg $MIRROR/mrtg..tmp
+                                                #wget --no-check-certificate -O system $MIRROR/system.tmp
+                                                #chmod +x mrtg.cfg ; chmod +x system
+                                                #mv -f system /var/www/html/mrtg/core
+                                                #mv -f mrtg.cfg /var/www/html/mrtg/core
+                                                echo "Updating MRTG config and template..."
+                                                total=0
+                                                count=0
+                                                for i in `df -kl | grep -v "Filesystem" | awk '{print $2}'`; do total="$total+$i"; count=`expr $count + 1`; done
+                                                total=$(echo $total | bc)
+                                                MEMORY="`free -b | grep Mem | awk '{print $2}'`"
+                                                perl -pi -e "s#665536000#${MEMORY}#" /var/www/html/mrtg/core/mrtg.cfg
+                                                perl -pi -e "s#74747118#${total}#" /var/www/html/mrtg/core/mrtg.cfg
+                                                /usr/local/mrtg-2/bin/indexmaker /var/www/html/mrtg/core/mrtg.cfg --output=/var/www/html/mrtg/index.html
+                                                echo "Adding MRTG to /etc/crontab..."
+                                                #echo "*/5 * * * * root env LANG=C /usr/local/mrtg-2/bin/mrtg /var/www/html/mrtg/core/mrtg.cfg" >> /etc/crontab
+                                                #echo "" >> /etc/crontab
+                                                MRTGCRON="`cat /etc/crontab | grep '/var/www/html/mrtg/core/mrtg.cfg' | wc -l`"
+                                                #if [ "${MRTGCRON}" -eq 0]; then
+                                                if [ "${MRTGCRON}" = "0" ]; then
+                                                echo "*/5 * * * * root env LANG=C /usr/local/mrtg-2/bin/mrtg /var/www/html/mrtg/core/mrtg.cfg" >> /etc/crontab
+                                                echo "" >> /etc/crontab
+                                                fi
+                                                perl -pi -e 's/151598074/1598074/'  /var/www/html/mrtg/core/mrtg.cfg
+                                                env LANG=C /usr/local/mrtg-2/bin/mrtg /var/www/html/mrtg/core/mrtg.cfg
+                                                env LANG=C /usr/local/mrtg-2/bin/mrtg /var/www/html/mrtg/core/mrtg.cfg
+                                                env LANG=C /usr/local/mrtg-2/bin/mrtg /var/www/html/mrtg/core/mrtg.cfg
+                                                env LANG=C /usr/local/mrtg-2/bin/mrtg /var/www/html/mrtg/core/mrtg.cfg
+                                                echo "Cleaning up installation..."
+                                                rm -rf mrtg*
+                                                cd $WD
+                                                echo ; echo ; cd $INSTALLDIR ; echo "MRTG install done" ; exit
+
+}
+
+doGRAPHICSMAGICK()
+{
+	echo "##################################################################"
+	echo "#"	
+	echo -e "# \e[1;37mInstall ImageMagick first\e[0m"
+	echo "#   ./update.script IMAGEMAGICK"	
+	echo -e "# \e[1;37mthen install GraphicsMagick run\e[0m"
+	echo "#   ./update.script GRAPHICSMAGICK"	
+	echo "#"
+	echo -e "# \e[1;37mIf you install ImageMagick before just continue\e[0m"
+	echo "#"
+	echo "##################################################################"
+	echo -e "#### \e[1;37mhit CTRL+C (^C) to abort or press enter to continue.....\e[0m ####"
+	echo "##################################################################"
+	read E ; cd $INSTALLDIR ; rm -fr GraphicsMagick-$GRAPHICSMAGICK.tar.gz GraphicsMagick-*
+                #wget --no-check-certificate $MIRROR/graphicsmagick/GraphicsMagick-$GRAPHICSMAGICK.tar.gz
+                wget --no-check-certificate https://sourceforge.net/projects/graphicsmagick/files/graphicsmagick/$GRAPHICSMAGICK/GraphicsMagick-$GRAPHICSMAGICK.tar.gz/download
+                #                                      if [ "`md5sum $INSTALLDIR/GraphicsMagick-$GRAPHICSMAGICK.tar.gz | cut -d ' ' -f 1`" = "`grep GRAPHICSMAGICK-core -m1 $INSTALLDIR/versions | cut -d ':' -f 3`" ]; then
+                #                            	echo "MD5 valid."
+                #                                        else
+                #                              	echo "MD5 invalid. Aborting."
+                #                               	exit
+                #                                          fi
+                gzip -d GraphicsMagick-$GRAPHICSMAGICK.tar.gz ; tar -xvf GraphicsMagick-$GRAPHICSMAGICK.tar
+                cd GraphicsMagick-$GRAPHICSMAGICK ; ./configure --prefix=/usr/local --enable-magick-compat --enable-shared --enable-magick-compat ; make ; make install
+	cd $INSTALLDIR ; echo "GraphicsMagick install/update done" ; exit
+
+}
+
+doIMAGEMAGICK()
+{
+	cd $INSTALLDIR ; rm -fr ImageImageMagick.tar.gz ImageMagick*
+                #wget --no-check-certificate $MIRROR/imagemagick/ImageImageMagick.tar.gz
+                wget --no-check-certificate http://ftp.nluug.nl/ImageMagick/ImageMagick.tar.gz
+                #                                         if [ "`md5sum $INSTALLDIR/ImageImageMagick.tar.gz | cut -d ' ' -f 1`" = "`grep IMAGEMAGICK-core -m1 $INSTALLDIR/versions | cut -d ':' -f 3`" ]; then
+                #                               	echo "MD5 valid."
+                #                                          else
+                #                               	echo "MD5 invalid. Aborting."
+                #                               	exit
+                #                                          fi
+                tar zxf ImageImageMagick.tar.gz
+                cd ImageMagick-$IMAGEMAGICK ; export PHP_PREFIX="/usr/local"
+	#$PHP_PREFIX/bin/phpize
+                #rm -fr /usr/local/lib/php/extensions/no-debug-non-zts-*/imagick.so ; /usr/local/php5/bin/pecl uninstall imagick
+                #./configure --with-imagick=/usr/local ; make ; make install
+	./configure --prefix=/usr/local ; make ; make install ; cd PerlMagick ; perl Makefile.PL ; make ; make install
+	#/usr/local/php5/bin/pecl install imagick
+                cd $INSTALLDIR ;  echo "ImageMagickinstall/update done" ; exit
+
+}
+
+##################################################
+
+cd $BASE_PATH
+
+if [ $# -eq 2 ]; then
+        USER_INPUT=0
+        INPUT_VALUE=$2
+fi
+
+case "$1" in
+        UPDATEME)
+                doUPDATEME;
+        ;;
+        CLEAN)
+                doCLEAN;
+        ;;
+        DATE)
+                doDATE;
+        ;;
+        OPENSSL)
+                doOPENSSL;
+        ;;
+        OPENSSH)
+                doOPENSSH;
+        ;;
+        SPAMASSASSIN)
+                doSPAMASSASSIN;
+        ;;
+        CLAMAV)
+                doCLAMAV;
+        ;;
+        MRTG)
+                doMRTG;
+        ;;
+        WEBMIN)
+                doWEBMIN;
+        ;;
+        IMAGEMAGICK)
+                doIMAGEMAGICK;
+        ;;
+        GRAPHICSMAGICK)
+                doGRAPHICSMAGICK;
+        ;;
+        * )
+                showHelp;
+                exit 0;
+        ;;
+esac
+
+##################################################
+exit 0;
+
