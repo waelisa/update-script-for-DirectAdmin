@@ -2,7 +2,7 @@ If you find update script useful, please consider to make a donation to support 
 
 Please keep in mind that donations are welcome, but in no way required to use and distribute update.script.
 
-[url=https://www.paypal.me/WaelIsa]You can support update.script by PayPal[/url]
+[Donate link – PayPal](https://www.paypal.me/WaelIsa)
 
 
 update.script Version: 1.8.4
