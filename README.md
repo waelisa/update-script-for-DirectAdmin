@@ -17,11 +17,11 @@ update script tested in this OS 32bit and 64bit.
 
 *CentOS
 
-and update to
+## and update to
 
-OpenSSL (You need to build ssh, apache, php, etc after upgrade)
+*OpenSSL (You need to build ssh, apache, php, etc after upgrade)
 
-OpenSSH (First update OpenSSL then install Webmin control panel to fix openssh if down or error in update.)
+*OpenSSH (First update OpenSSL then install Webmin control panel to fix openssh if down or error in update.)
 
 *ClamAV
 
@@ -45,7 +45,7 @@ wget --no-check-certificate https://github.com/waelisa/update-script-for-DirectA
 
 chmod 755 update.script
 
-[color=darkblue]Run this to read how to use.
+Run this to read how to use.
 
 ./update.script
 
