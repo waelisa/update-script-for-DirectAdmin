@@ -1,4 +1,4 @@
-** End of life  2015**
+** End of life  2017**
 
 If you find update script useful, please consider to make a donation to support this freeware.
 
