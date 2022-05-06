@@ -1,3 +1,5 @@
+** End of life  2015**
+
 If you find update script useful, please consider to make a donation to support this freeware.
 
 Please keep in mind that donations are welcome, but in no way required to use and distribute update.script.
